@@ -5,6 +5,7 @@
 package envconfig
 
 import (
+	"encoding"
 	"errors"
 	"fmt"
 	"reflect"
@@ -26,12 +27,6 @@ type ParseError struct {
 	Value     string
 }
 
-// A Decoder is a type that knows how to de-serialize environment variables
-// into itself.
-type Decoder interface {
-	Decode(value string) error
-}
-
 func (e *ParseError) Error() string {
 	return fmt.Sprintf("envconfig.Process: assigning %[1]s to %[2]s: converting '%[3]s' to type %[4]s", e.KeyName, e.FieldName, e.Value, e.TypeName)
 }
@@ -50,7 +45,8 @@ func Process(prefix string, spec interface{}) error {
 	for i := 0; i < s.NumField(); i++ {
 		f := s.Field(i)
 		fSpec := s.Type().Field(i)
-		if !f.CanSet() || fSpec.Tag.Get("ignored") == "true" {
+
+		if !f.CanSet() || fSpec.Tag.Get("envconfig") == "-" {
 			continue
 		}
 
@@ -117,16 +113,7 @@ func processField(field reflect.Value, spec reflect.StructField, prefix string) 
 		value, ok = syscall.Getenv(key)
 	}
 
-	def := spec.Tag.Get("default")
-	if def != "" && !ok {
-		value = def
-	}
-
-	req := spec.Tag.Get("required")
-	if !ok && def == "" {
-		if req == "true" {
-			return fmt.Errorf("required key %s missing value", key)
-		}
+	if !ok {
 		return nil
 	}
 
@@ -143,8 +130,8 @@ func processField(field reflect.Value, spec reflect.StructField, prefix string) 
 
 // processFieldValue processes a field using the given value.
 func processFieldValue(field reflect.Value, value string) error {
-	if decoder := decoderFrom(field); decoder != nil {
-		return decoder.Decode(value)
+	if unmarshaler := textUnmarshalerFrom(field); unmarshaler != nil {
+		return unmarshaler.UnmarshalText([]byte(value))
 	}
 
 	typ := field.Type()
@@ -210,19 +197,18 @@ func processFieldValue(field reflect.Value, value string) error {
 	return nil
 }
 
-func decoderFrom(field reflect.Value) Decoder {
+func textUnmarshalerFrom(field reflect.Value) encoding.TextUnmarshaler {
 	if field.CanInterface() {
-		dec, ok := field.Interface().(Decoder)
+		dec, ok := field.Interface().(encoding.TextUnmarshaler)
 		if ok {
 			return dec
 		}
 	}
 
-	// also check if pointer-to-type implements Decoder,
-	// and we can get a pointer to our field
+	// also check if pointer-to-type
 	if field.CanAddr() {
 		field = field.Addr()
-		dec, ok := field.Interface().(Decoder)
+		dec, ok := field.Interface().(encoding.TextUnmarshaler)
 		if ok {
 			return dec
 		}

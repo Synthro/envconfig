@@ -80,17 +80,14 @@ Users:
 
 ## Struct Tag Support
 
-Envconfig supports the use of struct tags to specify alternate, default, and required
-environment variables.
+Envconfig supports the use of struct tags to specify alternate and ignored environment variables.
 
 For example, consider the following struct:
 
 ```Go
 type Specification struct {
     MultiWordVar string `envconfig:"multi_word_var"`
-    DefaultVar   string `default:"foobar"`
-    RequiredVar  string `required:"true"`
-    IgnoredVar   string `ignored:"true"`
+    IgnoredVar   string `envconfig:"-"`
 }
 ```
 
@@ -102,12 +99,6 @@ export MYAPP_MULTI_WORD_VAR="this will be the value"
 
 # export MYAPP_MULTIWORDVAR="and this will not"
 ```
-
-If envconfig can't find an environment variable value for `MYAPP_DEFAULTVAR`,
-it will populate it with "foobar" as a default value.
-
-If envconfig can't find an environment variable value for `MYAPP_REQUIREDVAR`,
-it will return an error when asked to process the struct.
 
 If envconfig can't find an environment variable in the form `PREFIX_MYVAR`, and there
 is a struct tag defined, it will try to populate your variable with an environment
@@ -124,7 +115,7 @@ type Specification struct {
 }
 ```
 
-Envconfig won't process a field with the "ignored" tag set to "true", even if a corresponding
+Envconfig won't process a field with the "envconfig" tag set to "-", even if a corresponding
 environment variable is set.
 
 ## Supported Struct Field Types
@@ -140,7 +131,7 @@ Embedded structs using these fields are also supported.
 
 ## Custom Decoders
 
-Any field whose type (or pointer-to-type) implements `envconfig.Decoder` can
+Any field whose type (or pointer-to-type) implements `encoding.TextUnmarshaler` can
 control its own deserialization:
 
 ```Bash
@@ -150,8 +141,8 @@ export DNS_SERVER=8.8.8.8
 ```Go
 type IPDecoder net.IP
 
-func (ipd *IPDecoder) Decode(value string) error {
-    *ipd = IPDecoder(net.ParseIP(value))
+func (ipd *IPDecoder) UnmarshalText(text []byte) error {
+    *ipd = IPDecoder(net.ParseIP(string(text)))
     return nil
 }
 
